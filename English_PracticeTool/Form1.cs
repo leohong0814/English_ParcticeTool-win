@@ -9,16 +9,19 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.IO;
 using Newtonsoft.Json;
+using System.Collections;
+using System.Net.Http;
+using System.Web.Script.Serialization;
 
 namespace English_PracticeTool
 {
     public partial class Form1 : Form
     {
-        List<KeyValuePair<string, string>> orgQuizBank = new List<KeyValuePair<string, string>>();
-        List<KeyValuePair<string, string>> passQuiz = new List<KeyValuePair<string, string>>();
-        List<KeyValuePair<string, string>> failQuiz = new List<KeyValuePair<string, string>>();
-        List<KeyValuePair<string, string>> remainQuiz = new List<KeyValuePair<string, string>>();
-        KeyValuePair<string, string> currentQuiz { get; set; }
+        List<string> orgQuizBank = new List<string>();
+        List<string> passQuiz = new List<string>();
+        List<string> failQuiz = new List<string>();
+        List<string> remainQuiz = new List<string>();
+        string currentQuiz { get; set; }
 
         public Form1()
         {
@@ -28,15 +31,40 @@ namespace English_PracticeTool
         private void Form1_Load(object sender, EventArgs e)
         {
             string jsonContent = File.ReadAllText("./WordsFile/Words.json");
-            orgQuizBank = JsonConvert.DeserializeObject<Dictionary<string, string>>(jsonContent).ToList();
-            remainQuiz = shuffleDic(orgQuizBank);
+            orgQuizBank = JsonConvert.DeserializeObject<List<string>>(jsonContent);
+            string[] copiedArray = new string[orgQuizBank.Count];
+            orgQuizBank.CopyTo(copiedArray);
+            remainQuiz = new List<string>(copiedArray); 
+            shuffleList(remainQuiz);
             updateQuiz();
             UpdateResultStatus();
+            webBrowser1.Navigate("https://translate.google.com/?hl=zh-TW");
+        }
+
+        public string TranslateText(string input)
+        {
+            string url = String.Format
+            ("https://translate.googleapis.com/translate_a/single?client=gtx&sl={0}&tl={1}&dt=t&q={2}",
+             "en", "zh-TW", Uri.EscapeUriString(input));
+            HttpClient httpClient = new HttpClient();
+            string result = httpClient.GetStringAsync(url).Result;
+            var jsonData = new JavaScriptSerializer().Deserialize<List<dynamic>>(result);
+            var translationItems = jsonData[0];
+            string translation = "";
+            foreach (object item in translationItems)
+            {
+                IEnumerable translationLineObject = item as IEnumerable;
+                IEnumerator translationLineString = translationLineObject.GetEnumerator();
+                translationLineString.MoveNext();
+                translation += string.Format(" {0}", Convert.ToString(translationLineString.Current));
+            }
+            if (translation.Length > 1) { translation = translation.Substring(1); };
+            return translation;
         }
 
         private void button_ShowChinese_Click(object sender, EventArgs e)
         {
-            label_QuizChinese.Text = currentQuiz.Value;
+            label_QuizChinese.Text = TranslateText(currentQuiz);
         }
 
         private void button_Add2Pass_Click(object sender, EventArgs e)
@@ -58,7 +86,7 @@ namespace English_PracticeTool
         void updateQuiz()
         {
             currentQuiz = remainQuiz.FirstOrDefault();
-            label_Quiz.Text = currentQuiz.Key.ToString();
+            label_Quiz.Text = currentQuiz;
             label_QuizChinese.Text = string.Empty;
         }
 
@@ -69,20 +97,18 @@ namespace English_PracticeTool
             label_TatalCount.Text = orgQuizBank.Count.ToString();
         }
 
-        List<KeyValuePair<string, string>> shuffleDic(List<KeyValuePair<string, string>> doc)
+        void shuffleList<T>(List<T> list)
         {
             Random rng = new Random();
-            int n = doc.Count;
+            int n = list.Count;
             while (n > 1)
             {
                 n--;
                 int k = rng.Next(n + 1);
-                KeyValuePair<string, string> value = doc[k];
-                doc[k] = doc[n];
-                doc[n] = value;
+                T value = list[k];
+                list[k] = list[n];
+                list[n] = value;
             }
-            
-            return doc;
         }
 
         private void loadWordsToolStripMenuItem_Click(object sender, EventArgs e)
@@ -94,11 +120,11 @@ namespace English_PracticeTool
                 if (dlg.ShowDialog() == DialogResult.OK)
                 {
                     string jsonContent = File.ReadAllText(dlg.FileName);
-                    orgQuizBank = JsonConvert.DeserializeObject<Dictionary<string, string>>(jsonContent).ToList();
+                    orgQuizBank = JsonConvert.DeserializeObject<List<string>>(jsonContent);
                     passQuiz.Clear();
                     failQuiz.Clear();
                     remainQuiz.Clear();
-                    remainQuiz = shuffleDic(orgQuizBank);
+                    shuffleList(remainQuiz);
                     updateQuiz();
                     UpdateResultStatus();
                 }
